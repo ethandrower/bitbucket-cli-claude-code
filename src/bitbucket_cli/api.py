@@ -352,3 +352,50 @@ class BitbucketAPI:
                 "success": False,
                 "error": str(e)
             }
+
+    # Pipeline Methods
+
+    def list_pipelines(self, workspace: str, repo: str, branch: Optional[str] = None, limit: int = 10) -> Dict[str, Any]:
+        """List recent pipelines, optionally filtered by branch."""
+        endpoint = f"/repositories/{workspace}/{repo}/pipelines/"
+        params: Dict[str, Any] = {"sort": "-created_on", "pagelen": limit}
+        if branch:
+            params["target.branch"] = branch
+        return self.get(endpoint, params=params)
+
+    def get_pipeline(self, workspace: str, repo: str, pipeline_uuid: str) -> Dict[str, Any]:
+        """Get a specific pipeline by UUID."""
+        endpoint = f"/repositories/{workspace}/{repo}/pipelines/{pipeline_uuid}"
+        return self.get(endpoint)
+
+    def get_pipeline_steps(self, workspace: str, repo: str, pipeline_uuid: str) -> List[Dict[str, Any]]:
+        """List all steps for a pipeline."""
+        endpoint = f"/repositories/{workspace}/{repo}/pipelines/{pipeline_uuid}/steps/"
+        return self.get_all_pages(endpoint)
+
+    def get_step_log(self, workspace: str, repo: str, pipeline_uuid: str, step_uuid: str) -> str:
+        """Get the log output for a pipeline step (returns plain text)."""
+        # Log endpoint returns text/plain, not JSON — use session directly like get_diff does.
+        # UUIDs must be URL-encoded (%7B/%7D for curly braces) — Bitbucket returns 406 with
+        # literal curly braces on this endpoint, though other pipeline endpoints accept them.
+        from urllib.parse import quote
+        encoded_pipeline = quote(pipeline_uuid, safe="")
+        encoded_step = quote(step_uuid, safe="")
+        endpoint = f"/repositories/{workspace}/{repo}/pipelines/{encoded_pipeline}/steps/{encoded_step}/log"
+        url = f"{self.base_url}{endpoint}"
+        headers = self._get_headers()
+        headers.pop("Content-Type", None)  # No body on GET
+        headers["Accept"] = "*/*"  # Log endpoint returns 406 for text/plain or application/json
+        # Don't auto-follow redirects — Bitbucket redirects to a pre-signed S3 URL and forwarding
+        # the Authorization header to S3 causes a 400. Manually follow without auth headers.
+        response = self.session.get(url, headers=headers, timeout=self.timeout, allow_redirects=False)
+        if response.status_code in (307, 302):
+            s3_url = response.headers.get("Location")
+            if s3_url:
+                response = self.session.get(s3_url, timeout=self.timeout)
+        if response.status_code == 200:
+            return response.text
+        elif response.status_code in (404, 406):
+            return ""  # No log available (step not yet run, or log not accessible)
+        else:
+            self._handle_response(response)

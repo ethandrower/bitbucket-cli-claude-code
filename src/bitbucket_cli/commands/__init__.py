@@ -14,10 +14,11 @@ from .update import update_pr
 from .diff import diff_pr
 from .activity import activity_pr
 from .review import review_pr
+from .pipelines import get_pipeline_status
 
 __all__ = [
     "create_pr",
-    "list_prs", 
+    "list_prs",
     "show_pr",
     "approve_pr",
     "unapprove_pr",
@@ -28,4 +29,5 @@ __all__ = [
     "diff_pr",
     "activity_pr",
     "review_pr",
+    "get_pipeline_status",
 ]

@@ -27,6 +27,7 @@ from .commands import (
     diff_pr,
     activity_pr,
     review_pr,
+    get_pipeline_status,
 )
 from .utils.git import get_repository_info
 from .utils.output import handle_output, error, success
@@ -487,6 +488,135 @@ def config(repo_token, username, app_password, oauth_token, workspace, get, list
         
     except Exception as e:
         error(f"Configuration error: {e}")
+        sys.exit(1)
+
+
+@cli.command()
+@click.option("--branch", "-b", help="Filter by branch name")
+@click.option("--pr", "pr_id", type=int, help="Filter by PR ID (uses the PR's source branch)")
+@click.option("--limit", "-n", default=5, show_default=True, help="Number of pipelines to show")
+@click.option("--logs", "-l", is_flag=True, help="Show failure log tails for failed steps")
+@click.pass_context
+@validate_auth
+def pipeline(ctx, branch, pr_id, limit, logs):
+    """Show pipeline/build status for a branch or pull request."""
+    try:
+        config = load_config()
+        api = BitbucketAPI(config)
+
+        workspace = ctx.obj["workspace"]
+        repo = ctx.obj["repo"]
+
+        if not workspace or not repo:
+            repo_info = get_repository_info()
+            workspace = workspace or repo_info["workspace"]
+            repo = repo or repo_info["repo"]
+
+        # Auto-detect current branch when neither --branch nor --pr is provided
+        if not branch and not pr_id:
+            from .utils.git import get_current_branch
+            branch = get_current_branch()
+
+        pipelines = get_pipeline_status(
+            api, workspace, repo,
+            branch=branch,
+            pr_id=pr_id,
+            limit=limit,
+        )
+
+        if ctx.obj["output_json"]:
+            click.echo(json.dumps(pipelines, indent=2))
+            return
+
+        if not pipelines:
+            console.print("No pipelines found.", style="yellow")
+            return
+
+        # Color mappings for pipeline/step state
+        result_styles = {
+            "SUCCESSFUL": "green",
+            "FAILED": "red",
+            "STOPPED": "yellow",
+            "ERROR": "red",
+        }
+        state_styles = {
+            "IN_PROGRESS": "yellow",
+            "PENDING": "yellow",
+            "COMPLETED": "dim",
+        }
+
+        def _result_style(result, state):
+            if result:
+                return result_styles.get(result, "white")
+            return state_styles.get(state, "white")
+
+        table = Table(title="Pipelines")
+        table.add_column("#", style="cyan")
+        table.add_column("Branch", style="bold")
+        table.add_column("State", style="dim")
+        table.add_column("Result")
+        table.add_column("Duration", justify="right")
+        table.add_column("Created", style="dim")
+
+        for p in pipelines:
+            style = _result_style(p["result"], p["state"])
+            duration = (
+                f"{p['duration_in_seconds']}s" if p.get("duration_in_seconds") else "-"
+            )
+            table.add_row(
+                str(p["build_number"]),
+                p.get("branch") or "-",
+                p.get("state") or "-",
+                click.style(p.get("result") or p.get("state") or "-", fg=style) if not ctx.obj.get("no_color") else (p.get("result") or p.get("state") or "-"),
+                duration,
+                (p.get("created_on") or "")[:19],
+                style=style if p.get("result") in ("FAILED", "SUCCESSFUL") else None,
+            )
+
+        console.print(table)
+
+        # Print per-pipeline step summary
+        for p in pipelines:
+            if not p.get("steps"):
+                continue
+
+            console.print(f"\n[bold]Pipeline #{p['build_number']} steps:[/bold]")
+            step_table = Table(show_header=True, header_style="bold")
+            step_table.add_column("Step")
+            step_table.add_column("Result")
+            step_table.add_column("Duration", justify="right")
+
+            for step in p["steps"]:
+                step_style = _result_style(step.get("result"), step.get("state"))
+                step_duration = (
+                    f"{step['duration_in_seconds']}s"
+                    if step.get("duration_in_seconds")
+                    else "-"
+                )
+                step_table.add_row(
+                    step.get("name") or "-",
+                    step.get("result") or step.get("state") or "-",
+                    step_duration,
+                    style=step_style if step.get("result") in ("FAILED", "SUCCESSFUL") else None,
+                )
+
+            console.print(step_table)
+
+            if logs:
+                for step in p["steps"]:
+                    if step.get("log_tail"):
+                        from rich.panel import Panel
+                        from rich.syntax import Syntax
+                        console.print(
+                            Panel(
+                                step["log_tail"],
+                                title=f"[red]Log tail: {step.get('name')}[/red]",
+                                border_style="red",
+                            )
+                        )
+
+    except Exception as e:
+        error(f"Failed to get pipeline status: {e}")
         sys.exit(1)
 
 
