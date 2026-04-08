@@ -48,7 +48,7 @@ pip install git+https://github.com/ethandrower/bitbucket-cli-claude-code.git
 3. Configure the CLI:
 
 ```bash
-bb-pr config --repo-token your-repo-token --workspace your-workspace
+bb auth login --repo-token your-repo-token --workspace your-workspace
 # OR set environment variable:
 export BITBUCKET_REPO_TOKEN="your-repo-token"
 ```
@@ -58,51 +58,52 @@ export BITBUCKET_REPO_TOKEN="your-repo-token"
 2. Configure the CLI:
 
 ```bash
-bb-pr config --username your-username --app-password your-app-password --workspace your-workspace
+bb auth login --username your-username --app-password your-app-password --workspace your-workspace
 ```
 
 ### Basic Usage
 
 ```bash
 # Create a pull request
-bb-pr create --title "Feature: Add authentication" --description "Implements OAuth2"
+bb pr create --title "Feature: Add authentication" --description "Implements OAuth2"
 
 # List open PRs
-bb-pr list
+bb pr list
 
 # Review a PR with inline comments
-bb-pr comment 123 --file src/auth.py --line 42 --message "Consider using bcrypt"
+bb pr comment 123 --file src/auth.py --line 42 --message "Consider using bcrypt"
 
 # Approve and merge
-bb-pr approve 123
-bb-pr merge 123 --strategy squash --close-branch
+bb pr review 123 --approve
+bb pr merge 123 --strategy squash --close-branch
 ```
 
 ## Command Reference
 
 ### PR Management
 
-- `bb-pr create` - Create a new pull request
-- `bb-pr list` - List pull requests with filtering
-- `bb-pr show <id>` - View detailed PR information
-- `bb-pr update <id>` - Update PR title, description, or reviewers
+- `bb pr create` - Create a new pull request
+- `bb pr list` - List pull requests with filtering
+- `bb pr view <id>` - View detailed PR information
 
 ### Review Actions
 
-- `bb-pr approve <id>` - Approve a pull request
-- `bb-pr unapprove <id>` - Remove your approval
-- `bb-pr decline <id>` - Decline/close a pull request
-- `bb-pr comment <id>` - Add comments (general or inline)
+- `bb pr review <id> --approve` - Approve a pull request
+- `bb pr review <id> --unapprove` - Remove your approval
+- `bb pr review <id> --request-changes` - Post a change-request comment
+- `bb pr close <id>` - Close (decline) a pull request without merging
+- `bb pr comment <id>` - Add comments (general or inline)
 
 ### Merge Operations
 
-- `bb-pr merge <id>` - Merge with various strategies (merge_commit, squash, fast_forward)
+- `bb pr merge <id>` - Merge with various strategies (merge_commit, squash, fast_forward)
 
 ### Utilities
 
-- `bb-pr diff <id>` - View PR diff
-- `bb-pr activity <id>` - View PR activity timeline
-- `bb-pr config` - Manage authentication and defaults
+- `bb run list` - Show pipeline runs (filter with `--branch` or `--pr`)
+- `bb auth login` - Configure credentials (interactive or via flags)
+- `bb auth status` - Show current auth status
+- `bb auth logout` - Reset stored credentials
 
 ## Claude Code Integration
 
@@ -120,7 +121,7 @@ review_comments = [
 
 for comment in review_comments:
     subprocess.run([
-        "bb-pr", "comment", str(pr_id),
+        "bb", "pr", "comment", str(pr_id),
         "--file", comment["file"],
         "--line", str(comment["line"]),
         "--message", comment["message"]
@@ -199,7 +200,7 @@ git checkout -b feature/new-auth
 git commit -am "Add OAuth2 authentication"
 git push -u origin feature/new-auth
 
-bb-pr create \
+bb pr create \
   --title "Feature: OAuth2 Authentication" \
   --description "Implements secure OAuth2 flow with refresh tokens" \
   --source feature/new-auth \
@@ -207,30 +208,30 @@ bb-pr create \
   --reviewers alice,bob
 
 # 2. Add review comments
-bb-pr comment 123 --file src/auth.py --line 25 \
+bb pr comment 123 --file src/auth.py --line 25 \
   --message "Consider adding rate limiting here"
 
-bb-pr comment 123 --file src/auth.py --from-line 40 --to-line 45 \
+bb pr comment 123 --file src/auth.py --from-line 40 --to-line 45 \
   --message "This error handling block needs improvement"
 
 # 3. Approve and merge
-bb-pr approve 123
-bb-pr merge 123 --strategy squash --message "Add OAuth2 authentication system" --close-branch
+bb pr review 123 --approve
+bb pr merge 123 --strategy squash --message "Add OAuth2 authentication system" --close-branch
 ```
 
 ### Interactive Review Session
 ```bash
 # Start guided review with prompts
-bb-pr review 123 --interactive
+bb pr review 123 --interactive
 ```
 
 ### Batch Operations
 ```bash
 # List all PRs I need to review
-bb-pr list --reviewer $(bb-pr config --get username) --state OPEN
+bb pr list --reviewer your-username --state OPEN
 
 # Get PR data as JSON for processing
-bb-pr list --json | python -c "
+bb pr list --json | python -c "
 import json, sys
 prs = json.load(sys.stdin)
 for pr in prs:
@@ -263,7 +264,7 @@ pip install -e ".[dev]"
 pytest
 
 # Run with development flags
-bb-pr --help
+bb pr --help
 ```
 
 ## Contributing

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "bitbucket-cli-for-claude-code"
-version = "1.0.0"
+version = "2.0.0"
 description = "Lightweight Bitbucket Cloud PR CLI tool designed for Claude Code integration"
 readme = "README.md"
 license = {text = "MIT"}
@@ -50,7 +50,7 @@ dev = [
 ]
 
 [project.scripts]
-bb-pr = "bitbucket_cli.cli:main"
+bb = "bitbucket_cli.cli:main"
 
 [project.urls]
 Homepage = "https://github.com/ethandrower/bitbucket-cli-claude-code"
